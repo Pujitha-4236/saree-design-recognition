@@ -1,0 +1,19 @@
+# Dataset
+Data/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model files
+*.pth
+
+# IDE
+.vscode/
