@@ -23,10 +23,26 @@ transform = transforms.Compose([
 ])
 
 
-# Load test dataset
+# --------------------------------------------------
+# Load dataset
+# --------------------------------------------------
+
+valid_dataset = datasets.ImageFolder(
+    "Data/kaggle_saree/valid",
+    transform=transform
+)
+
 test_dataset = datasets.ImageFolder(
     "Data/kaggle_saree/test",
     transform=transform
+)
+
+
+valid_loader = DataLoader(
+    valid_dataset,
+    batch_size=16,
+    shuffle=False,
+    num_workers=0
 )
 
 test_loader = DataLoader(
@@ -37,7 +53,10 @@ test_loader = DataLoader(
 )
 
 
+# --------------------------------------------------
 # Load model
+# --------------------------------------------------
+
 model = SareeEmbeddingModel(
     embedding_dim=256
 )
@@ -53,71 +72,98 @@ model = model.to(device)
 model.eval()
 
 
-# Extract embeddings
-embeddings = []
-labels = []
+# --------------------------------------------------
+# Function to extract embeddings
+# --------------------------------------------------
+
+def get_embeddings(loader):
+
+    embeddings = []
+    labels = []
+
+    with torch.no_grad():
+
+        for images, batch_labels in loader:
+
+            images = images.to(device)
+
+            output = model(images)
+
+            output = F.normalize(
+                output,
+                p=2,
+                dim=1
+            )
+
+            embeddings.append(
+                output.cpu()
+            )
+
+            labels.append(
+                batch_labels
+            )
+
+    embeddings = torch.cat(
+        embeddings,
+        dim=0
+    )
+
+    labels = torch.cat(
+        labels,
+        dim=0
+    )
+
+    return embeddings, labels
 
 
-with torch.no_grad():
-
-    for images, batch_labels in test_loader:
-
-        images = images.to(device)
-
-        output = model(images)
-
-        output = F.normalize(
-            output,
-            p=2,
-            dim=1
-        )
-
-        embeddings.append(
-            output.cpu()
-        )
-
-        labels.append(
-            batch_labels
-        )
-
-
-embeddings = torch.cat(
-    embeddings,
-    dim=0
-)
-
-labels = torch.cat(
-    labels,
-    dim=0
-)
-
-
+# --------------------------------------------------
 # Create pair scores
-scores = []
-targets = []
+# --------------------------------------------------
+
+def create_pairs(embeddings, labels):
+
+    scores = []
+    targets = []
+
+    number_of_images = len(embeddings)
+
+    for i in range(number_of_images):
+
+        for j in range(i + 1, number_of_images):
+
+            similarity = torch.dot(
+                embeddings[i],
+                embeddings[j]
+            ).item()
+
+            scores.append(similarity)
+
+            if labels[i] == labels[j]:
+                targets.append(1)
+            else:
+                targets.append(0)
+
+    return scores, targets
 
 
-number_of_images = len(embeddings)
+# --------------------------------------------------
+# Validation: find best threshold
+# --------------------------------------------------
+
+print("\n================================")
+print("VALIDATION THRESHOLD SELECTION")
+print("================================")
+
+valid_embeddings, valid_labels = get_embeddings(
+    valid_loader
+)
+
+valid_scores, valid_targets = create_pairs(
+    valid_embeddings,
+    valid_labels
+)
 
 
-for i in range(number_of_images):
-
-    for j in range(i + 1, number_of_images):
-
-        similarity = torch.dot(
-            embeddings[i],
-            embeddings[j]
-        ).item()
-
-        scores.append(similarity)
-
-        if labels[i] == labels[j]:
-            targets.append(1)
-        else:
-            targets.append(0)
-
-
-# Find best threshold
 best_threshold = 0
 best_accuracy = 0
 
@@ -128,7 +174,10 @@ for threshold in [
 
     correct = 0
 
-    for score, target in zip(scores, targets):
+    for score, target in zip(
+        valid_scores,
+        valid_targets
+    ):
 
         if score >= threshold:
             prediction = 1
@@ -138,7 +187,7 @@ for threshold in [
         if prediction == target:
             correct += 1
 
-    accuracy = correct / len(scores)
+    accuracy = correct / len(valid_scores)
 
     if accuracy > best_accuracy:
 
@@ -146,21 +195,73 @@ for threshold in [
         best_threshold = threshold
 
 
-print("\n================================")
-print("VERIFICATION THRESHOLD")
-print("================================")
-
 print(
-    "Best threshold:",
+    "Best validation threshold:",
     best_threshold
 )
 
 print(
-    "Verification accuracy:",
+    "Validation accuracy:",
     f"{best_accuracy * 100:.2f}%"
 )
 
 print(
-    "Total pairs:",
-    len(scores)
+    "Validation pairs:",
+    len(valid_scores)
 )
+
+
+# --------------------------------------------------
+# Test: evaluate using validation threshold
+# --------------------------------------------------
+
+print("\n================================")
+print("TEST VERIFICATION")
+print("================================")
+
+test_embeddings, test_labels = get_embeddings(
+    test_loader
+)
+
+test_scores, test_targets = create_pairs(
+    test_embeddings,
+    test_labels
+)
+
+
+correct = 0
+
+
+for score, target in zip(
+    test_scores,
+    test_targets
+):
+
+    if score >= best_threshold:
+        prediction = 1
+    else:
+        prediction = 0
+
+    if prediction == target:
+        correct += 1
+
+
+test_accuracy = correct / len(test_scores)
+
+
+print(
+    "Threshold used:",
+    best_threshold
+)
+
+print(
+    "Test verification accuracy:",
+    f"{test_accuracy * 100:.2f}%"
+)
+
+print(
+    "Test pairs:",
+    len(test_scores)
+)
+
+print("================================")

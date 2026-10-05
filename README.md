@@ -29,21 +29,65 @@ The pipeline consists of the following stages:
 6. Contrastive learning is used to make different augmented views of the same image similar.
 7. Cosine similarity is used for image retrieval and verification.
 
+## Approach Note
+
+I use a pretrained ConvNeXt-Atto backbone with a 256-dimensional normalized embedding to capture saree surface patterns while improving robustness to color changes. Images are resized to 224×224 and training uses color augmentation with two-view contrastive learning and a temperature-scaled contrastive loss. Embeddings are L2-normalized and compared using cosine similarity for retrieval and verification.
+
 ### Pipeline
 
 ```text
-Saree Image
+                    Saree Image
+                         ↓
+                Resize to 224 × 224
+                         ↓
+                Training: Color Augmentation
+                         ↓
+                  ConvNeXt-Atto
+                         ↓
+                  256-D Embedding
+                         ↓
+                  L2 Normalization
+                         ↓
+                 Cosine Similarity
+                    ↙          ↘
+             Retrieval       Verification
+                 ↓                 ↓
+             Top-K Ranking    Similar / Different
+```
+
+### Retrieval
+
+```text
+Query Image
      ↓
-Resize to 224 × 224
+Generate Embedding
      ↓
-Color Augmentation
-     ↓
-ConvNeXt-Atto
-     ↓
-256-D Embedding
-     ↓
-L2 Normalization
+Compare with Gallery Embeddings
      ↓
 Cosine Similarity
      ↓
-Retrieval / Verification
+Rank Similar Images
+     ↓
+Top-K Results
+```
+
+### Verification
+
+
+Verification determines whether two saree images belong to the same category based on their embedding similarity.
+
+The validation set was used to select the similarity threshold, and the selected threshold was then evaluated on the unseen test set.
+
+### Validation
+
+```text
+Best validation threshold: 0.36
+Validation accuracy: 74.40%
+Validation pairs: 6555
+
+### Test
+
+```text
+Threshold used: 0.36
+Test verification accuracy: 77.18%
+Test pairs: 1770
